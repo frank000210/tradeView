@@ -176,7 +176,7 @@ export function Dashboard() {
                 contentStyle={{ background: '#1a2235', border: '1px solid #374151', borderRadius: 8 }}
                 labelStyle={{ color: '#9ca3af', fontSize: 11 }}
                 itemStyle={{ color: '#60a5fa', fontSize: 11 }}
-                formatter={(v: number) => [`${v.toFixed(1)}`, '收盤價']}
+                formatter={(v: number) => [`${v.toFixed(1)}`, '收盤價'] as [string, string]}
               />
               <Line
                 type="monotone"
