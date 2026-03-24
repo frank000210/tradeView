@@ -1,0 +1,5 @@
+{
+  "build_command": "npm install && npm run build",
+  "start_command": "node dist/index.js",
+  "node_version": "20"
+}
