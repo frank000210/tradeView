@@ -256,7 +256,7 @@ export function RiskMonitor() {
               contentStyle={{ background: '#1a2235', border: '1px solid #374151', borderRadius: 8 }}
               labelStyle={{ color: '#9ca3af', fontSize: 11 }}
               itemStyle={{ color: '#60a5fa', fontSize: 11 }}
-              formatter={(v: number) => [`${(v / 10000).toFixed(2)} 萬`, '淨值'] as [string, string]}
+              formatter={(v) => [`${(Number(v) / 10000).toFixed(2)} 萬`, '淨值'] as [string, string]}
             />
             <ReferenceLine
               y={risk.portfolio_value * (1 - 0.03)}
