@@ -152,7 +152,7 @@ export function MarketData() {
               contentStyle={{ background: '#1a2235', border: '1px solid #374151', borderRadius: 8 }}
               labelStyle={{ color: '#9ca3af', fontSize: 11 }}
               itemStyle={{ fontSize: 11 }}
-              formatter={(v: number) => [v.toLocaleString(), '成交量']}
+              formatter={(v: number) => [v.toLocaleString(), '成交量'] as [string, string]}
             />
             <Bar
               dataKey="vol"
