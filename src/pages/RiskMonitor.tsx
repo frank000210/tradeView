@@ -56,13 +56,13 @@ function GaugeArc({ value, max, color }: { value: number; max: number; color: st
 
   // Background arc (full 180°)
   const bgEndX = cx + r;
-  const bgEndY = cy;
+  const bgEndY = cy; // used in path below
 
   return (
     <svg viewBox="0 0 160 90" className="w-full">
       {/* Background arc */}
       <path
-        d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${bgEndX} ${cy}`}
+        d={`M ${cx - r} ${bgEndY} A ${r} ${r} 0 0 1 ${bgEndX} ${bgEndY}`}
         fill="none"
         stroke="#1f2937"
         strokeWidth={12}
@@ -256,7 +256,7 @@ export function RiskMonitor() {
               contentStyle={{ background: '#1a2235', border: '1px solid #374151', borderRadius: 8 }}
               labelStyle={{ color: '#9ca3af', fontSize: 11 }}
               itemStyle={{ color: '#60a5fa', fontSize: 11 }}
-              formatter={(v: number) => [`${(v / 10000).toFixed(2)} 萬`, '淨值']}
+              formatter={(v: number) => [`${(v / 10000).toFixed(2)} 萬`, '淨值'] as [string, string]}
             />
             <ReferenceLine
               y={risk.portfolio_value * (1 - 0.03)}
