@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
-import { TrendingUp, TrendingDown, Minus, BrainCircuit, Clock, Filter } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { TrendingUp, TrendingDown, Minus, BrainCircuit, Clock, Filter, RefreshCw } from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { fetchAgentSignals } from '../api/client';
-import type { AgentSignal, SignalType } from '../types/api';
+import { fetchAgentSignals, fetchAlphaScores } from '../api/client';
+import type { AgentSignal, SignalType, AlphaScore } from '../types/api';
 import { clsx } from 'clsx';
 
 const SIGNAL_CONFIG = {
@@ -34,28 +34,48 @@ function timeAgo(ts?: number) {
 
 export function AISignals() {
   const [signals, setSignals] = useState<AgentSignal[]>([]);
+  const [radarData, setRadarData] = useState<AlphaScore[]>([]);
   const [filter, setFilter] = useState<SignalType | 'ALL'>('ALL');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchAgentSignals().then((d) => {
-      setSignals(d);
+  const load = useCallback(async () => {
+    try {
+      setError(null);
+      const [sigs, alpha] = await Promise.all([
+        fetchAgentSignals(),
+        fetchAlphaScores(),
+      ]);
+      setSignals(sigs);
+      setRadarData(alpha.scores);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '載入失敗');
+    } finally {
       setLoading(false);
-    });
+    }
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const t = setInterval(load, 20_000);
+    return () => clearInterval(t);
+  }, [load]);
 
   const filtered = filter === 'ALL' ? signals : signals.filter((s) => s.type === filter);
   const buys = signals.filter((s) => s.type === 'BUY');
   const sells = signals.filter((s) => s.type === 'SELL');
   const holds = signals.filter((s) => s.type === 'HOLD');
 
-  const radarData = [
-    { metric: '技術面', value: 82 },
-    { metric: '法人籌碼', value: 74 },
-    { metric: '情緒面', value: 68 },
-    { metric: '基本面', value: 60 },
-    { metric: '量能', value: 78 },
-  ];
+  if (error && signals.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#6b7280]">
+        <span className="text-red-400 text-sm">{error}</span>
+        <button onClick={load} className="flex items-center gap-2 px-4 py-2 bg-[#1f2937] rounded-lg text-sm hover:bg-[#374151] transition-colors">
+          <RefreshCw size={14} /> 重試
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 fade-in">
