@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import yahooFinance from 'yahoo-finance2';
 
 const router = Router();
 
@@ -44,6 +43,7 @@ async function fetchRealKline(symbol: string, interval: string, limit: number): 
     return cached.data.slice(-limit);
   }
 
+  const { default: yahooFinance } = await import('yahoo-finance2');
   const result = await yahooFinance.chart(symbol, {
     interval: YF_INTERVAL[interval],
     range: YF_RANGE[interval] as any,
