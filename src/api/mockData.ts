@@ -1,4 +1,4 @@
-import type { KlineData, AgentSignal, RiskStatus, CrawledInfo, PendingTrade } from '../types/api';
+import type { KlineData, AgentSignal, AlphaScoreResponse, RiskStatus, EquityPoint, CrawledInfo, PendingTrade } from '../types/api';
 
 // === 生成 K 線模擬資料 (台積電 2330) ===
 function generateKlineData(count = 60, basePrice = 910): KlineData[] {
@@ -126,6 +126,37 @@ export const mockCrawledData: CrawledInfo[] = [
     timestamp: Date.now() - 1000 * 60 * 200,
   },
 ];
+
+// === Alpha 評分模擬資料 ===
+export const mockAlphaScores: AlphaScoreResponse = {
+  scores: [
+    { metric: '技術面',   value: 82 },
+    { metric: '法人籌碼', value: 74 },
+    { metric: '情緒面',   value: 68 },
+    { metric: '基本面',   value: 60 },
+    { metric: '量能',     value: 78 },
+  ],
+  updated_at: Date.now(),
+};
+
+// === 淨值曲線模擬資料 ===
+function generateEquityCurve(hours = 30, base = 2_450_000): EquityPoint[] {
+  const points: EquityPoint[] = [];
+  let val = base * 0.962;
+  const now = Date.now();
+  for (let i = hours; i >= 0; i--) {
+    val = val + (Math.random() - 0.46) * val * 0.004;
+    val = Math.max(val, base * 0.94);
+    const ts = now - i * 3_600_000;
+    const d = new Date(ts);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    points.push({ time: `${hh}:${mm}`, equity: Math.round(val), timestamp: ts });
+  }
+  if (points.length > 0) points[points.length - 1].equity = base;
+  return points;
+}
+export const mockEquityCurve: EquityPoint[] = generateEquityCurve(30);
 
 // === 待核准交易模擬資料 ===
 export const mockPendingTrades: PendingTrade[] = [
