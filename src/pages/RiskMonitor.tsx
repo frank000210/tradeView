@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import { ShieldCheck, ShieldAlert, ShieldOff, AlertTriangle, TrendingDown, Activity, Zap } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { ShieldCheck, ShieldAlert, ShieldOff, AlertTriangle, TrendingDown, Activity, Zap, RefreshCw } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts';
-import { fetchRiskStatus } from '../api/client';
-import type { RiskStatus } from '../types/api';
+import { fetchRiskStatus, fetchEquityCurve } from '../api/client';
+import type { RiskStatus, EquityPoint } from '../types/api';
 import { clsx } from 'clsx';
 
 const CB_CONFIG = {
@@ -25,21 +25,6 @@ const CB_CONFIG = {
   },
 };
 
-// Mock equity curve
-function generateEquityCurve(base = 2450000) {
-  const data = [];
-  let val = base * 0.96;
-  const now = Date.now();
-  for (let i = 30; i >= 0; i--) {
-    val = val + (Math.random() - 0.46) * val * 0.004;
-    data.push({
-      time: new Date(now - i * 3600000).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false }),
-      equity: Math.round(val),
-    });
-  }
-  data[data.length - 1].equity = base;
-  return data;
-}
 
 function GaugeArc({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = Math.min(value / max, 1);
@@ -98,15 +83,36 @@ function GaugeArc({ value, max, color }: { value: number; max: number; color: st
 
 export function RiskMonitor() {
   const [risk, setRisk] = useState<RiskStatus | null>(null);
-  const [equityCurve] = useState(generateEquityCurve());
+  const [equityCurve, setEquityCurve] = useState<{ time: string; equity: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchRiskStatus().then((r) => {
+  const load = useCallback(async () => {
+    try {
+      setError(null);
+      const [r, eq] = await Promise.all([
+        fetchRiskStatus(),
+        fetchEquityCurve(30),
+      ]);
       setRisk(r);
+      setEquityCurve(
+        eq.map((p: EquityPoint) => ({
+          time: new Date(p.timestamp).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false }),
+          equity: p.equity,
+        }))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '載入失敗');
+    } finally {
       setLoading(false);
-    });
+    }
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
+  }, [load]);
 
   if (loading || !risk) {
     return (
@@ -115,6 +121,17 @@ export function RiskMonitor() {
         <div className="grid grid-cols-3 gap-4">
           {[...Array(3)].map((_, i) => <div key={i} className="h-48 bg-[#111827] rounded-xl" />)}
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#6b7280]">
+        <span className="text-red-400 text-sm">{error}</span>
+        <button onClick={load} className="flex items-center gap-2 px-4 py-2 bg-[#1f2937] rounded-lg text-sm hover:bg-[#374151] transition-colors">
+          <RefreshCw size={14} /> 重試
+        </button>
       </div>
     );
   }
