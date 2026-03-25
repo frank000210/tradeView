@@ -65,6 +65,24 @@ export interface PendingTrade {
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 
+// === Alpha 評分 ===
+export interface AlphaScore {
+  metric: string;
+  value: number;
+}
+
+export interface AlphaScoreResponse {
+  scores: AlphaScore[];
+  updated_at: number;
+}
+
+// === 淨值曲線 ===
+export interface EquityPoint {
+  time: string;      // "HH:mm" 格式
+  equity: number;
+  timestamp: number;
+}
+
 // === 頁面路由 ===
 export type PageType =
   | 'dashboard'
