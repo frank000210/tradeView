@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart2 } from 'lucide-react';
+import { BarChart2, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { fetchKlineData } from '../api/client';
 import { CandlestickChart } from '../components/CandlestickChart';
@@ -26,13 +26,14 @@ export function MarketData() {
   const [interval, setInterval] = useState<'1m' | '5m' | '1h' | '1d'>('1h');
   const [data, setData] = useState<KlineData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
-    fetchKlineData(symbol, interval).then((d) => {
-      setData(d);
-      setLoading(false);
-    });
+    setError(null);
+    fetchKlineData(symbol, interval)
+      .then((d) => { setData(d); setLoading(false); })
+      .catch((e) => { setError(e instanceof Error ? e.message : '載入失敗'); setLoading(false); });
   }, [symbol, interval]);
 
   const latest = data[data.length - 1];
@@ -51,6 +52,12 @@ export function MarketData() {
     <div className="space-y-4 fade-in">
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-[#111827] border border-[#1f2937] rounded-xl p-4">
+        {error && (
+          <div className="w-full flex items-center gap-2 text-red-400 text-xs">
+            <RefreshCw size={12} />
+            <span>{error} — 點選股票代碼重新載入</span>
+          </div>
+        )}
         {/* Symbol Selector */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-[#6b7280]">股票代碼</span>
