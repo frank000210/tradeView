@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -9,6 +9,7 @@ import {
   Wallet,
   Activity,
   ArrowUpRight,
+  RefreshCw,
 } from 'lucide-react';
 import {
   LineChart,
@@ -47,21 +48,44 @@ export function Dashboard() {
   const [risk, setRisk] = useState<RiskStatus | null>(null);
   const [kline, setKline] = useState<KlineData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    Promise.all([
-      fetchAgentSignals(),
-      fetchRiskStatus(),
-      fetchKlineData('2330.TW', '1h'),
-    ]).then(([s, r, k]) => {
+  const load = useCallback(async () => {
+    try {
+      setError(null);
+      const [s, r, k] = await Promise.all([
+        fetchAgentSignals(),
+        fetchRiskStatus(),
+        fetchKlineData('2330.TW', '1h'),
+      ]);
       setSignals(s);
       setRisk(r);
       setKline(k);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '載入失敗');
+    } finally {
       setLoading(false);
-    });
+    }
   }, []);
 
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
+  }, [load]);
+
   if (loading) return <LoadingSkeleton />;
+
+  if (error && !risk) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <span className="text-red-400 text-sm">{error}</span>
+        <button onClick={load} className="flex items-center gap-2 px-4 py-2 bg-[#1f2937] rounded-lg text-sm hover:bg-[#374151] transition-colors text-white">
+          <RefreshCw size={14} /> 重試
+        </button>
+      </div>
+    );
+  }
 
   const latestPrice = kline.length > 0 ? kline[kline.length - 1].c : 0;
   const prevPrice = kline.length > 1 ? kline[kline.length - 2].c : latestPrice;
