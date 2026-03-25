@@ -47,8 +47,7 @@ async function fetchRealKline(symbol: string, interval: string, limit: number): 
   const result = await yahooFinance.chart(symbol, {
     interval: YF_INTERVAL[interval],
     range: YF_RANGE[interval] as any,
-    includePrePost: false,
-  });
+  } as any);
 
   const quotes = (result.quotes ?? []).filter(
     (q) => q.open !== null && q.close !== null
