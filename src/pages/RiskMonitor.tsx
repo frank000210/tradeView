@@ -114,7 +114,7 @@ export function RiskMonitor() {
     return () => clearInterval(t);
   }, [load]);
 
-  if (loading || !risk) {
+  if (loading) {
     return (
       <div className="space-y-4 animate-pulse">
         <div className="h-32 bg-[#111827] rounded-xl" />
@@ -125,11 +125,12 @@ export function RiskMonitor() {
     );
   }
 
-  if (error) {
+  if (error || !risk) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#6b7280]">
-        <span className="text-red-400 text-sm">{error}</span>
-        <button onClick={load} className="flex items-center gap-2 px-4 py-2 bg-[#1f2937] rounded-lg text-sm hover:bg-[#374151] transition-colors">
+        <ShieldOff size={32} className="opacity-30" />
+        <span className="text-red-400 text-sm">{error ?? '查無風控資料'}</span>
+        <button onClick={load} className="flex items-center gap-2 px-4 py-2 bg-[#1f2937] rounded-lg text-sm hover:bg-[#374151] transition-colors text-white">
           <RefreshCw size={14} /> 重試
         </button>
       </div>
