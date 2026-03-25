@@ -9,9 +9,12 @@ const allowedOrigins = [
 
 export const corsMiddleware = cors({
   origin: (origin, callback) => {
+    // 允許無 origin（如 Postman、curl）
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error('CORS: origin ' + origin + ' not allowed'));
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error(`CORS: origin ${origin} not allowed`));
   },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
