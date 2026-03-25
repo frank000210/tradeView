@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BarChart2, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { fetchKlineData } from '../api/client';
@@ -28,13 +28,16 @@ export function MarketData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
+    setData([]);
     fetchKlineData(symbol, interval)
       .then((d) => { setData(d); setLoading(false); })
-      .catch((e) => { setError(e instanceof Error ? e.message : '載入失敗'); setLoading(false); });
+      .catch((e) => { setError(e instanceof Error ? e.message : '查無資料'); setLoading(false); });
   }, [symbol, interval]);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   const latest = data[data.length - 1];
   const prev = data[data.length - 2];
@@ -52,12 +55,6 @@ export function MarketData() {
     <div className="space-y-4 fade-in">
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-[#111827] border border-[#1f2937] rounded-xl p-4">
-        {error && (
-          <div className="w-full flex items-center gap-2 text-red-400 text-xs">
-            <RefreshCw size={12} />
-            <span>{error} — 點選股票代碼重新載入</span>
-          </div>
-        )}
         {/* Symbol Selector */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-[#6b7280]">股票代碼</span>
@@ -125,7 +122,7 @@ export function MarketData() {
           <div>
             <h2 className="text-sm font-semibold text-white">{symbol} K 線圖</h2>
             <p className="text-xs text-[#6b7280]">
-              {data.length} 根 K 線 · 滑鼠懸停查看 OHLCV
+              {data.length > 0 ? `${data.length} 根 K 線 · 滑鼠懸停查看 OHLCV` : '尚無資料'}
             </p>
           </div>
           <div className="flex items-center gap-3 text-xs text-[#6b7280]">
@@ -140,6 +137,22 @@ export function MarketData() {
               載入中...
             </div>
           </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center h-80 gap-3 text-[#6b7280]">
+            <BarChart2 size={32} className="opacity-30" />
+            <span className="text-red-400 text-sm">{error}</span>
+            <button
+              onClick={loadData}
+              className="flex items-center gap-2 px-4 py-2 bg-[#1f2937] rounded-lg text-sm hover:bg-[#374151] transition-colors text-white"
+            >
+              <RefreshCw size={14} /> 重試
+            </button>
+          </div>
+        ) : data.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-80 gap-2 text-[#6b7280]">
+            <BarChart2 size={32} className="opacity-30" />
+            <span className="text-sm">查無 {symbol} 的 K 線資料</span>
+          </div>
         ) : (
           <CandlestickChart data={data} height={360} />
         )}
@@ -151,6 +164,11 @@ export function MarketData() {
           <h2 className="text-sm font-semibold text-white">成交量</h2>
           <span className="text-xs text-[#6b7280]">近 20 筆</span>
         </div>
+        {(!loading && (error || data.length === 0)) ? (
+          <div className="flex items-center justify-center h-28 text-[#4b5563] text-sm">
+            查無成交量資料
+          </div>
+        ) : (
         <ResponsiveContainer width="100%" height={120}>
           <BarChart data={volumeData} barSize={10}>
             <XAxis dataKey="time" tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false} />
@@ -182,6 +200,7 @@ export function MarketData() {
             />
           </BarChart>
         </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
