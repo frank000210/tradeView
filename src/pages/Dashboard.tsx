@@ -76,10 +76,12 @@ export function Dashboard() {
 
   if (loading) return <LoadingSkeleton />;
 
-  if (error && !risk) {
+  if (error || (!risk && !loading)) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
-        <span className="text-red-400 text-sm">{error}</span>
+        <Activity size={36} className="text-[#374151]" />
+        <span className="text-red-400 text-sm">{error ?? '查無儀表板資料'}</span>
+        <span className="text-xs text-[#4b5563]">請確認後端服務是否正常運作</span>
         <button onClick={load} className="flex items-center gap-2 px-4 py-2 bg-[#1f2937] rounded-lg text-sm hover:bg-[#374151] transition-colors text-white">
           <RefreshCw size={14} /> 重試
         </button>
@@ -94,7 +96,7 @@ export function Dashboard() {
 
   const buys = signals.filter((s) => s.type === 'BUY').length;
   const sells = signals.filter((s) => s.type === 'SELL').length;
-  const avgConf = signals.reduce((a, b) => a + b.confidence, 0) / signals.length;
+  const avgConf = signals.length > 0 ? signals.reduce((a, b) => a + b.confidence, 0) / signals.length : 0;
 
   const chartData = kline.slice(-20).map((k) => ({
     time: formatTime(k.t),
