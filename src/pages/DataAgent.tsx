@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { ExternalLink, Search, TrendingUp, TrendingDown, Minus, Database } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { ExternalLink, Search, TrendingUp, TrendingDown, Minus, Database, RefreshCw } from 'lucide-react';
 import { fetchCrawledData } from '../api/client';
 import type { CrawledInfo } from '../types/api';
 import { clsx } from 'clsx';
@@ -50,14 +50,38 @@ export function DataAgent() {
   const [filter, setFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
 
-  useEffect(() => {
-    fetchCrawledData().then((d) => {
+  const load = useCallback(async () => {
+    try {
+      setError(null);
+      const d = await fetchCrawledData();
       setData(d);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '載入失敗');
+    } finally {
       setLoading(false);
-    });
+    }
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const t = setInterval(load, 60_000); // 爬蟲資料每分鐘更新
+    return () => clearInterval(t);
+  }, [load]);
+
+  if (error && data.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <Database size={32} className="text-[#374151]" />
+        <span className="text-red-400 text-sm">{error}</span>
+        <button onClick={load} className="flex items-center gap-2 px-4 py-2 bg-[#1f2937] rounded-lg text-sm hover:bg-[#374151] transition-colors text-white">
+          <RefreshCw size={14} /> 重試
+        </button>
+      </div>
+    );
+  }
 
   const sources = ['ALL', ...Array.from(new Set(data.map((d) => d.source)))];
 
