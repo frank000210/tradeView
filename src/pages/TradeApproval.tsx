@@ -1,13 +1,12 @@
-import { useState } from 'react';
-import { CheckCircle, XCircle, Clock, TrendingUp, TrendingDown, AlertCircle, User } from 'lucide-react';
-import { approveTrade } from '../api/client';
-import { mockPendingTrades } from '../api/mockData';
+import { useState, useEffect, useCallback } from 'react';
+import { CheckCircle, XCircle, Clock, TrendingUp, TrendingDown, AlertCircle, User, RefreshCw } from 'lucide-react';
+import { fetchPendingTrades, approveTrade } from '../api/client';
 import type { PendingTrade } from '../types/api';
 import { clsx } from 'clsx';
 
 const SIGNAL_CONFIG = {
-  BUY: { label: '買入', color: 'text-green-400', bg: 'bg-green-400/10', border: 'border-green-500/30', icon: <TrendingUp size={14} /> },
-  SELL: { label: '賣出', color: 'text-red-400', bg: 'bg-red-400/10', border: 'border-red-500/30', icon: <TrendingDown size={14} /> },
+  BUY:  { label: '買入', color: 'text-green-400',  bg: 'bg-green-400/10',  border: 'border-green-500/30',  icon: <TrendingUp size={14} /> },
+  SELL: { label: '賣出', color: 'text-red-400',    bg: 'bg-red-400/10',    border: 'border-red-500/30',    icon: <TrendingDown size={14} /> },
   HOLD: { label: '持有', color: 'text-yellow-400', bg: 'bg-yellow-400/10', border: 'border-yellow-500/30', icon: null },
 };
 
@@ -19,20 +18,46 @@ function timeAgo(ts: number) {
 }
 
 export function TradeApproval() {
-  const [trades, setTrades] = useState<PendingTrade[]>(mockPendingTrades);
+  const [trades, setTrades]       = useState<PendingTrade[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast]         = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   };
 
+  const loadTrades = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await fetchPendingTrades('ALL');
+      setTrades(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '載入失敗');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // 初始載入
+  useEffect(() => {
+    loadTrades();
+  }, [loadTrades]);
+
+  // 每 15 秒自動刷新
+  useEffect(() => {
+    const timer = setInterval(loadTrades, 15_000);
+    return () => clearInterval(timer);
+  }, [loadTrades]);
+
   const handleAction = async (taskId: string, action: 'APPROVE' | 'REJECT') => {
     setProcessing(taskId);
     try {
       const res = await approveTrade({ task_id: taskId, action });
       if (res.success) {
+        // 樂觀更新本地狀態，不等待重新 fetch
         setTrades((prev) =>
           prev.map((t) =>
             t.task_id === taskId
@@ -49,7 +74,7 @@ export function TradeApproval() {
     }
   };
 
-  const pending = trades.filter((t) => t.status === 'PENDING');
+  const pending  = trades.filter((t) => t.status === 'PENDING');
   const approved = trades.filter((t) => t.status === 'APPROVED');
   const rejected = trades.filter((t) => t.status === 'REJECTED');
 
@@ -57,14 +82,12 @@ export function TradeApproval() {
     <div className="space-y-4 fade-in">
       {/* Toast */}
       {toast && (
-        <div
-          className={clsx(
-            'fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm',
-            toast.type === 'success'
-              ? 'bg-green-500/20 border border-green-500/30 text-green-400'
-              : 'bg-red-500/20 border border-red-500/30 text-red-400'
-          )}
-        >
+        <div className={clsx(
+          'fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl text-sm',
+          toast.type === 'success'
+            ? 'bg-green-500/20 border border-green-500/30 text-green-400'
+            : 'bg-red-500/20 border border-red-500/30 text-red-400'
+        )}>
           {toast.type === 'success' ? <CheckCircle size={14} /> : <XCircle size={14} />}
           {toast.msg}
         </div>
@@ -77,36 +100,70 @@ export function TradeApproval() {
             <Clock size={14} className="text-yellow-400" />
             <span className="text-xs text-[#6b7280]">待核准</span>
           </div>
-          <div className="text-2xl font-bold text-yellow-400">{pending.length}</div>
+          <div className="text-2xl font-bold text-yellow-400">
+            {loading ? '—' : pending.length}
+          </div>
         </div>
         <div className="bg-[#111827] border border-green-500/20 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <CheckCircle size={14} className="text-green-400" />
             <span className="text-xs text-[#6b7280]">已核准</span>
           </div>
-          <div className="text-2xl font-bold text-green-400">{approved.length}</div>
+          <div className="text-2xl font-bold text-green-400">
+            {loading ? '—' : approved.length}
+          </div>
         </div>
         <div className="bg-[#111827] border border-red-500/20 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <XCircle size={14} className="text-red-400" />
             <span className="text-xs text-[#6b7280]">已拒絕</span>
           </div>
-          <div className="text-2xl font-bold text-red-400">{rejected.length}</div>
+          <div className="text-2xl font-bold text-red-400">
+            {loading ? '—' : rejected.length}
+          </div>
         </div>
       </div>
 
       {/* HITL Info Banner */}
       <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
         <User size={16} className="text-blue-400 flex-shrink-0 mt-0.5" />
-        <div className="text-xs text-[#9ca3af]">
+        <div className="text-xs text-[#9ca3af] flex-1">
           <span className="text-blue-400 font-medium">人工在環 (HITL) 模式</span>：
           當 AI 系統處於半自動模式，或交易信心度未達 95% 時，所有交易建議需透過此介面進行人工核准後方可執行。
           核准後系統將立即送出委託單。
         </div>
+        <button
+          onClick={loadTrades}
+          className="text-[#4b5563] hover:text-white transition-colors flex-shrink-0"
+          title="重新整理"
+        >
+          <RefreshCw size={14} />
+        </button>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12 text-[#6b7280]">
+          <RefreshCw size={16} className="animate-spin mr-2" />
+          <span className="text-sm">載入中...</span>
+        </div>
+      )}
+
+      {/* Error State */}
+      {!loading && error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-center">
+          <p className="text-red-400 text-sm mb-2">{error}</p>
+          <button
+            onClick={loadTrades}
+            className="text-xs text-[#6b7280] hover:text-white transition-colors"
+          >
+            重試
+          </button>
+        </div>
+      )}
+
       {/* Pending Trades */}
-      {pending.length > 0 && (
+      {!loading && !error && pending.length > 0 && (
         <div>
           <h2 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
             <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
@@ -119,10 +176,7 @@ export function TradeApproval() {
               const totalValue = trade.quantity * trade.estimated_price;
 
               return (
-                <div
-                  key={trade.task_id}
-                  className={clsx('bg-[#111827] border rounded-xl p-4', cfg.border)}
-                >
+                <div key={trade.task_id} className={clsx('bg-[#111827] border rounded-xl p-4', cfg.border)}>
                   {/* Header */}
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div className="flex items-center gap-3">
@@ -220,37 +274,40 @@ export function TradeApproval() {
       )}
 
       {/* Completed Trades History */}
-      {(approved.length > 0 || rejected.length > 0) && (
+      {!loading && !error && (approved.length > 0 || rejected.length > 0) && (
         <div>
           <h2 className="text-sm font-semibold text-white mb-3">已處理交易</h2>
           <div className="space-y-2">
-            {[...approved, ...rejected].map((trade) => {
-              const cfg = SIGNAL_CONFIG[trade.type];
-              const isApproved = trade.status === 'APPROVED';
-              return (
-                <div key={trade.task_id} className="bg-[#111827] border border-[#1f2937] rounded-xl p-3 opacity-70">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {isApproved
-                        ? <CheckCircle size={14} className="text-green-400" />
-                        : <XCircle size={14} className="text-red-400" />}
-                      <span className="text-sm font-medium text-white">{trade.symbol}</span>
-                      <span className={clsx('text-xs', cfg.color)}>{cfg.label}</span>
-                      <span className="text-xs text-[#4b5563]">{trade.task_id}</span>
+            {[...approved, ...rejected]
+              .sort((a, b) => b.created_at - a.created_at)
+              .map((trade) => {
+                const cfg = SIGNAL_CONFIG[trade.type];
+                const isApproved = trade.status === 'APPROVED';
+                return (
+                  <div key={trade.task_id} className="bg-[#111827] border border-[#1f2937] rounded-xl p-3 opacity-70">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {isApproved
+                          ? <CheckCircle size={14} className="text-green-400" />
+                          : <XCircle size={14} className="text-red-400" />}
+                        <span className="text-sm font-medium text-white">{trade.symbol}</span>
+                        <span className={clsx('text-xs', cfg.color)}>{cfg.label}</span>
+                        <span className="text-xs text-[#4b5563]">{trade.task_id}</span>
+                        <span className="text-xs text-[#4b5563]">{timeAgo(trade.created_at)}</span>
+                      </div>
+                      <span className={clsx('text-xs font-semibold', isApproved ? 'text-green-400' : 'text-red-400')}>
+                        {isApproved ? '已核准' : '已拒絕'}
+                      </span>
                     </div>
-                    <span className={clsx('text-xs font-semibold', isApproved ? 'text-green-400' : 'text-red-400')}>
-                      {isApproved ? '已核准' : '已拒絕'}
-                    </span>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </div>
       )}
 
       {/* Empty state */}
-      {pending.length === 0 && approved.length === 0 && rejected.length === 0 && (
+      {!loading && !error && trades.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-[#6b7280]">
           <CheckCircle size={40} className="mb-3 opacity-30" />
           <div className="text-sm">目前沒有待核准的交易</div>
