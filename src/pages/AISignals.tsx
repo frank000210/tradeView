@@ -153,6 +153,11 @@ export function AISignals() {
                 <div key={i} className="h-28 bg-[#111827] rounded-xl animate-pulse" />
               ))}
             </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-2 text-[#6b7280]">
+              <BrainCircuit size={32} className="opacity-30" />
+              <span className="text-sm">查無 AI 信號資料</span>
+            </div>
           ) : (
             filtered.map((s, i) => {
               const cfg = SIGNAL_CONFIG[s.type];
