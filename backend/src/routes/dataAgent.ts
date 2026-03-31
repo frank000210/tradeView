@@ -1,6 +1,11 @@
 import { Router, Request, Response } from 'express';
+import https from 'https';
+import http from 'http';
 import Parser from 'rss-parser';
 import { crawledData } from '../store/index';
+
+// 新聞可信度查核服務 URL（同 Zeabur 專案內部服務）
+const NEWS_CHECKER_URL = process.env.NEWS_CHECKER_URL || 'http://localhost:8001';
 
 const router = Router();
 const rssParser = new Parser({ timeout: 8000, headers: { 'User-Agent': 'Mozilla/5.0' } });
@@ -112,6 +117,79 @@ router.get('/crawled-text', async (req: Request, res: Response) => {
     let data = [...crawledData].sort((a, b) => b.timestamp - a.timestamp) as any[];
     if (sourceFilter) data = data.filter((d: any) => d.source === sourceFilter);
     return res.json(data.slice(0, limit));
+  }
+});
+
+/**
+ * 呼叫 Python news-checker 服務的輕量 HTTP 工具
+ */
+function proxyRequest(
+  url: string,
+  method: string,
+  body?: object
+): Promise<{ status: number; data: unknown }> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const isHttps = parsed.protocol === 'https:';
+    const payload = body ? JSON.stringify(body) : undefined;
+
+    const options = {
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+      },
+    };
+
+    const transport = isHttps ? https : http;
+    const req = transport.request(options, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => {
+        try {
+          const text = Buffer.concat(chunks).toString('utf-8');
+          resolve({ status: res.statusCode ?? 500, data: JSON.parse(text) });
+        } catch {
+          reject(new Error('Invalid JSON from news-checker'));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(15_000, () => req.destroy(new Error('news-checker 請求逾時')));
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+/**
+ * POST /api/data-agent/check-credibility
+ * 代理至 Python news-checker 服務，分析新聞可信度。
+ * Body: { url?, title?, text?, published_at? }
+ */
+router.post('/check-credibility', async (req: Request, res: Response) => {
+  const { url = '', title = '', text = '', published_at } = req.body ?? {};
+
+  if (!url && !title && !text) {
+    return res.status(400).json({ error: 'MISSING_PARAMS', message: '需提供 url、title 或 text 之一' });
+  }
+
+  try {
+    const checkerUrl = `${NEWS_CHECKER_URL}/api/check`;
+    const result = await proxyRequest(checkerUrl, 'POST', { url, title, text, published_at });
+
+    if (result.status !== 200) {
+      console.warn(`[dataAgent/check-credibility] news-checker 回傳 ${result.status}`);
+      return res.status(502).json({ error: 'CHECKER_ERROR', message: '可信度服務暫時無法使用', detail: result.data });
+    }
+
+    return res.json(result.data);
+  } catch (err) {
+    const msg = (err as Error).message;
+    console.error('[dataAgent/check-credibility]', msg);
+    return res.status(503).json({ error: 'CHECKER_UNAVAILABLE', message: '可信度查核服務暫時無法連線', detail: msg });
   }
 });
 
