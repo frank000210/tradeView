@@ -169,6 +169,119 @@ async def check_credibility(req: CheckRequest):
         raise HTTPException(status_code=500, detail=f"分析失敗：{str(e)}")
 
 
+# ─── Execute Rule Sandbox ─────────────────────────────────────────────────────
+
+import threading
+from typing import Any
+
+class ExecuteRuleRequest(BaseModel):
+    script: str = Field(..., description="Python 腳本內容")
+    marketData: dict = Field(default_factory=dict, description="市場數據")
+
+
+class ExecuteRuleResponse(BaseModel):
+    signal: str   # BUY | SELL | HOLD
+    confidence: float
+    conditions: list[dict]
+    reasoning: str
+
+
+def _run_script_in_sandbox(script: str, market_data: dict) -> dict:
+    """
+    在受限沙箱中執行用戶 Python 腳本。
+    限制 builtins，禁止 import、open、exec 等危險操作。
+    """
+    safe_builtins = {
+        'abs': abs, 'all': all, 'any': any, 'bool': bool,
+        'dict': dict, 'enumerate': enumerate, 'filter': filter,
+        'float': float, 'format': format, 'int': int, 'isinstance': isinstance,
+        'len': len, 'list': list, 'map': map, 'max': max, 'min': min,
+        'print': print, 'range': range, 'round': round, 'set': set,
+        'sorted': sorted, 'str': str, 'sum': sum, 'tuple': tuple,
+        'zip': zip, 'True': True, 'False': False, 'None': None,
+    }
+
+    # 注入市場數據變數
+    local_vars: dict[str, Any] = {
+        '__builtins__': safe_builtins,
+        'signal': 'HOLD',
+        'confidence': 0.55,
+        'conditions': [],
+        'reasoning': '',
+        **market_data,
+    }
+
+    exec(compile(script, '<signal_rule>', 'exec'), {'__builtins__': safe_builtins}, local_vars)
+
+    signal = str(local_vars.get('signal', 'HOLD')).upper()
+    if signal not in ('BUY', 'SELL', 'HOLD'):
+        signal = 'HOLD'
+
+    confidence = float(local_vars.get('confidence', 0.55))
+    confidence = max(0.0, min(1.0, confidence))
+
+    conditions = local_vars.get('conditions', [])
+    if not isinstance(conditions, list):
+        conditions = []
+
+    # Normalise condition dicts
+    normalised = []
+    for c in conditions:
+        if isinstance(c, dict):
+            normalised.append({
+                'name': str(c.get('name', '')),
+                'met': bool(c.get('met', False)),
+                'value': str(c.get('value', '')),
+            })
+
+    reasoning = str(local_vars.get('reasoning', ''))
+
+    return {
+        'signal': signal,
+        'confidence': confidence,
+        'conditions': normalised,
+        'reasoning': reasoning,
+    }
+
+
+@app.post("/api/execute-rule", response_model=ExecuteRuleResponse)
+async def execute_rule(req: ExecuteRuleRequest):
+    """
+    在沙箱中執行用戶自訂 Python 信號規則腳本。
+    腳本可使用 prices, volumes, rsi, macd, macd_signal, sma20, bb_upper, bb_lower, symbol。
+    腳本必須設定 signal (BUY/SELL/HOLD), confidence (0-1), conditions (list), reasoning (str)。
+    """
+    if not req.script or len(req.script.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Script is required")
+
+    if len(req.script) > 50000:
+        raise HTTPException(status_code=400, detail="Script too large (max 50KB)")
+
+    result: dict = {}
+    error_msg: str = ""
+
+    def run():
+        nonlocal result, error_msg
+        try:
+            result = _run_script_in_sandbox(req.script, req.marketData)
+        except Exception as e:
+            error_msg = str(e)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(timeout=5.0)
+
+    if thread.is_alive():
+        raise HTTPException(status_code=408, detail="Script execution timed out (5s limit)")
+
+    if error_msg:
+        raise HTTPException(status_code=400, detail=f"Script error: {error_msg}")
+
+    logger.info(f"execute-rule: signal={result.get('signal')} confidence={result.get('confidence'):.2f} conditions={len(result.get('conditions', []))}")
+
+    return ExecuteRuleResponse(**result)
+
+
 # ─── Entry Point ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
