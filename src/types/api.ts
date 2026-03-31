@@ -83,6 +83,27 @@ export interface EquityPoint {
   timestamp: number;
 }
 
+// === 新聞可信度查核 ===
+export interface CredibilityLayer {
+  name: string;
+  label: string;
+  score: number;
+  weight: number;
+  detail: string;
+}
+
+export interface CredibilityResult {
+  overall_score: number;
+  verdict: 'CREDIBLE' | 'UNCERTAIN' | 'SUSPICIOUS';
+  verdict_label: string;
+  verdict_color: string;
+  summary: string;
+  layers: CredibilityLayer[];
+  cofacts_found: boolean;
+  cofacts_verdict?: string;
+  processing_ms: number;
+}
+
 // === 頁面路由 ===
 export type PageType =
   | 'dashboard'
