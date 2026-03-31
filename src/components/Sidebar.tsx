@@ -7,6 +7,7 @@ import {
   CheckSquare,
   Activity,
   ChevronRight,
+  Code2,
 } from 'lucide-react';
 import type { PageType } from '../types/api';
 import { clsx } from 'clsx';
@@ -25,6 +26,7 @@ const navItems: NavItem[] = [
   { id: 'risk', label: '風控監控', icon: <ShieldAlert size={18} /> },
   { id: 'data-agent', label: '資料爬蟲', icon: <Newspaper size={18} /> },
   { id: 'trade-approval', label: '交易核准', icon: <CheckSquare size={18} />, badge: 2 },
+  { id: 'signal-rules', label: '信號規則管理', icon: <Code2 size={18} /> },
 ];
 
 interface SidebarProps {
