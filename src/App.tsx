@@ -6,6 +6,7 @@ import { AISignals } from './pages/AISignals';
 import { RiskMonitor } from './pages/RiskMonitor';
 import { DataAgent } from './pages/DataAgent';
 import { TradeApproval } from './pages/TradeApproval';
+import { SignalRules } from './pages/SignalRules';
 import type { PageType } from './types/api';
 
 export default function App() {
@@ -33,6 +34,8 @@ export default function App() {
         return <DataAgent key={refreshKey} />;
       case 'trade-approval':
         return <TradeApproval key={refreshKey} />;
+      case 'signal-rules':
+        return <SignalRules key={refreshKey} />;
       default:
         return <Dashboard key={refreshKey} />;
     }
