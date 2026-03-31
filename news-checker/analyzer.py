@@ -76,7 +76,7 @@ QUALITY_KEYWORDS = [
 
 # ─── Cofacts GraphQL ──────────────────────────────────────────────────────────
 
-COFACTS_ENDPOINT = "https://cofacts-api.g0v.tw/graphql"
+COFACTS_ENDPOINT = "https://api.cofacts.tw/graphql"
 COFACTS_TIMEOUT = 8.0
 
 COFACTS_QUERY = """
@@ -249,7 +249,10 @@ class NewsAnalyzer:
             resp = await self._client.post(
                 COFACTS_ENDPOINT,
                 json={"query": COFACTS_QUERY, "variables": {"text": snippet}},
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "NewsChecker/1.0 (stock-dashboard credibility analyzer)",
+                },
                 timeout=COFACTS_TIMEOUT,
             )
             data = resp.json()
