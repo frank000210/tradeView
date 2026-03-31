@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { TrendingUp, TrendingDown, Minus, BrainCircuit, Clock, Filter, RefreshCw } from 'lucide-react';
+import {
+  TrendingUp, TrendingDown, Minus, BrainCircuit, Clock, Filter, RefreshCw,
+  ChevronDown, ChevronUp, Code2, Star,
+} from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { fetchAgentSignals, fetchAlphaScores } from '../api/client';
-import type { AgentSignal, SignalType, AlphaScore } from '../types/api';
+import { fetchAgentSignals, fetchAlphaScores, fetchSignalRules } from '../api/client';
+import type { AgentSignal, SignalType, AlphaScore, SignalRule, SignalCondition } from '../types/api';
 import { clsx } from 'clsx';
 
 const SIGNAL_CONFIG = {
@@ -32,6 +35,122 @@ function timeAgo(ts?: number) {
   return `${Math.floor(mins / 60)} 小時前`;
 }
 
+// ── Conditions Panel ─────────────────────────────────────────────
+function ConditionsPanel({ conditions }: { conditions: SignalCondition[] }) {
+  const met = conditions.filter((c) => c.met);
+  const unmet = conditions.filter((c) => !c.met);
+
+  return (
+    <div className="mt-3 space-y-1.5">
+      <p className="text-[10px] text-[#6b7280] font-medium uppercase tracking-wider">觸發條件</p>
+      <div className="grid grid-cols-2 gap-1.5">
+        {conditions.map((c, i) => (
+          <div
+            key={i}
+            className={clsx(
+              'flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-lg border',
+              c.met
+                ? 'bg-green-400/5 border-green-500/20 text-green-300'
+                : 'bg-[#0d1117] border-[#1f2937] text-[#4b5563]'
+            )}
+          >
+            <span className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0', c.met ? 'bg-green-400' : 'bg-[#2d3748]')} />
+            <span className="flex-1 truncate">{c.name}</span>
+            <span className="text-[9px] opacity-60 flex-shrink-0 ml-auto">{c.value}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-[#4b5563]">
+        {met.length} / {conditions.length} 條件觸發
+      </p>
+    </div>
+  );
+}
+
+// ── Signal Card ──────────────────────────────────────────────────
+function SignalCard({ signal }: { signal: AgentSignal }) {
+  const [expanded, setExpanded] = useState(false);
+  const cfg = SIGNAL_CONFIG[signal.type];
+  const hasConditions = signal.conditions && signal.conditions.length > 0;
+
+  return (
+    <div className={clsx('bg-[#111827] border rounded-xl p-4 transition-all hover:bg-[#1a2235]', cfg.border)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className={clsx('p-2 rounded-lg border', cfg.bg, cfg.border)}>
+            <span className={cfg.color}>{cfg.icon}</span>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-white">{signal.symbol}</span>
+              <span className={clsx('text-xs font-semibold px-2 py-0.5 rounded-full', cfg.bg, cfg.color)}>
+                {cfg.label}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex items-center gap-1 text-xs text-[#6b7280]">
+                <Clock size={10} />
+                <span>{timeAgo(signal.timestamp)}</span>
+              </div>
+              {signal.ruleName && (
+                <div className="flex items-center gap-1 text-[10px] text-[#4b5563]">
+                  <Code2 size={9} />
+                  <span className="truncate max-w-[100px]">{signal.ruleName}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Confidence + Expand */}
+        <div className="flex items-start gap-2 flex-shrink-0">
+          <div className="text-right">
+            <div className={clsx('text-xl font-bold', cfg.color)}>
+              {(signal.confidence * 100).toFixed(0)}%
+            </div>
+            <div className="text-[10px] text-[#6b7280]">信心度</div>
+          </div>
+          {hasConditions && (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="mt-1 p-1 rounded-md hover:bg-[#1f2937] text-[#6b7280] hover:text-white transition-colors"
+              title={expanded ? '收起條件' : '展開條件'}
+            >
+              {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Confidence Bar */}
+      <div className="mt-3 mb-3">
+        <div className="h-1.5 bg-[#1f2937] rounded-full">
+          <div
+            className={clsx('h-1.5 rounded-full transition-all', {
+              'bg-green-400': signal.type === 'BUY',
+              'bg-red-400': signal.type === 'SELL',
+              'bg-yellow-400': signal.type === 'HOLD',
+            })}
+            style={{ width: `${signal.confidence * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Reasoning */}
+      <div className="text-xs text-[#9ca3af] bg-[#0d1117] rounded-lg p-3 flex items-start gap-2">
+        <BrainCircuit size={12} className="text-purple-400 flex-shrink-0 mt-0.5" />
+        <span>{signal.reasoning}</span>
+      </div>
+
+      {/* Conditions (expandable) */}
+      {expanded && hasConditions && (
+        <ConditionsPanel conditions={signal.conditions!} />
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────
 export function AISignals() {
   const [signals, setSignals] = useState<AgentSignal[]>([]);
   const [radarData, setRadarData] = useState<AlphaScore[]>([]);
@@ -39,11 +158,29 @@ export function AISignals() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Rule selector
+  const [rules, setRules] = useState<SignalRule[]>([]);
+  const [selectedRuleId, setSelectedRuleId] = useState<string>('');
+  const [rulesLoading, setRulesLoading] = useState(true);
+
+  // Load available rules once
+  useEffect(() => {
+    fetchSignalRules()
+      .then((data) => {
+        setRules(data.rules);
+        if (data.activeRule) setSelectedRuleId(data.activeRule.id);
+        else if (data.rules[0]) setSelectedRuleId(data.rules[0].id);
+      })
+      .catch(() => {})
+      .finally(() => setRulesLoading(false));
+  }, []);
+
   const load = useCallback(async () => {
     try {
       setError(null);
+      const ruleId = selectedRuleId && selectedRuleId !== 'default' ? selectedRuleId : undefined;
       const [sigs, alpha] = await Promise.all([
-        fetchAgentSignals(),
+        fetchAgentSignals('ALL', ruleId),
         fetchAlphaScores(),
       ]);
       setSignals(sigs);
@@ -53,18 +190,21 @@ export function AISignals() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedRuleId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!rulesLoading) load(); }, [load, rulesLoading]);
   useEffect(() => {
+    if (rulesLoading) return;
     const t = setInterval(load, 20_000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, rulesLoading]);
 
   const filtered = filter === 'ALL' ? signals : signals.filter((s) => s.type === filter);
   const buys = signals.filter((s) => s.type === 'BUY');
   const sells = signals.filter((s) => s.type === 'SELL');
   const holds = signals.filter((s) => s.type === 'HOLD');
+
+  const activeRule = rules.find((r) => r.id === selectedRuleId);
 
   if (error && signals.length === 0) {
     return (
@@ -79,6 +219,36 @@ export function AISignals() {
 
   return (
     <div className="space-y-4 fade-in">
+      {/* Rule Selector Bar */}
+      <div className="bg-[#111827] border border-[#1f2937] rounded-xl px-4 py-3 flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2 text-xs text-[#6b7280]">
+          <Code2 size={14} className="text-blue-400" />
+          <span>使用規則：</span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {rules.map((rule) => (
+            <button
+              key={rule.id}
+              onClick={() => setSelectedRuleId(rule.id)}
+              className={clsx(
+                'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors',
+                selectedRuleId === rule.id
+                  ? 'bg-blue-500/15 text-blue-400 border-blue-500/40'
+                  : 'bg-[#0d1117] text-[#6b7280] border-[#1f2937] hover:text-white hover:border-[#374151]'
+              )}
+            >
+              {rule.isActive && <Star size={9} className="text-yellow-400 fill-yellow-400" />}
+              {rule.name}
+            </button>
+          ))}
+        </div>
+        {activeRule && (
+          <span className="ml-auto text-[10px] text-[#4b5563]">
+            {activeRule.isDefault ? '內建規則' : `自訂規則`}
+          </span>
+        )}
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-3 gap-4">
         {(
@@ -145,6 +315,9 @@ export function AISignals() {
                 )}
               </button>
             ))}
+            <button onClick={load} className="ml-auto flex items-center gap-1 text-xs text-[#6b7280] hover:text-white transition-colors">
+              <RefreshCw size={11} />
+            </button>
           </div>
 
           {loading ? (
@@ -159,66 +332,7 @@ export function AISignals() {
               <span className="text-sm">查無 AI 信號資料</span>
             </div>
           ) : (
-            filtered.map((s, i) => {
-              const cfg = SIGNAL_CONFIG[s.type];
-              return (
-                <div
-                  key={i}
-                  className={clsx(
-                    'bg-[#111827] border rounded-xl p-4 transition-all hover:bg-[#1a2235]',
-                    cfg.border
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className={clsx('p-2 rounded-lg border', cfg.bg, cfg.border)}>
-                        <span className={cfg.color}>{cfg.icon}</span>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-white">{s.symbol}</span>
-                          <span className={clsx('text-xs font-semibold px-2 py-0.5 rounded-full', cfg.bg, cfg.color)}>
-                            {cfg.label}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 mt-0.5 text-xs text-[#6b7280]">
-                          <Clock size={10} />
-                          <span>{timeAgo(s.timestamp)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Confidence */}
-                    <div className="text-right flex-shrink-0">
-                      <div className={clsx('text-xl font-bold', cfg.color)}>
-                        {(s.confidence * 100).toFixed(0)}%
-                      </div>
-                      <div className="text-[10px] text-[#6b7280]">信心度</div>
-                    </div>
-                  </div>
-
-                  {/* Confidence Bar */}
-                  <div className="mt-3 mb-3">
-                    <div className="h-1.5 bg-[#1f2937] rounded-full">
-                      <div
-                        className={clsx('h-1.5 rounded-full transition-all', {
-                          'bg-green-400': s.type === 'BUY',
-                          'bg-red-400': s.type === 'SELL',
-                          'bg-yellow-400': s.type === 'HOLD',
-                        })}
-                        style={{ width: `${s.confidence * 100}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Reasoning */}
-                  <div className="text-xs text-[#9ca3af] bg-[#0d1117] rounded-lg p-3 flex items-start gap-2">
-                    <BrainCircuit size={12} className="text-purple-400 flex-shrink-0 mt-0.5" />
-                    <span>{s.reasoning}</span>
-                  </div>
-                </div>
-              );
-            })
+            filtered.map((s, i) => <SignalCard key={`${s.symbol}-${i}`} signal={s} />)
           )}
         </div>
 
@@ -264,6 +378,22 @@ export function AISignals() {
             <div className="mt-3 text-xs text-[#6b7280]">
               當前閾值：<span className="text-white">95%</span>
             </div>
+          </div>
+
+          {/* Conditions Legend */}
+          <div className="bg-[#111827] border border-[#1f2937] rounded-xl p-4">
+            <h3 className="text-xs font-semibold text-white mb-2">條件展示說明</h3>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-xs text-[#9ca3af]">
+                <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
+                已觸發條件（綠色高亮）
+              </div>
+              <div className="flex items-center gap-2 text-xs text-[#6b7280]">
+                <span className="w-2 h-2 rounded-full bg-[#2d3748] flex-shrink-0" />
+                未觸發條件（灰色顯示）
+              </div>
+            </div>
+            <p className="text-[10px] text-[#4b5563] mt-2">點擊信號卡右上角 ⌄ 展開條件明細</p>
           </div>
         </div>
       </div>
