@@ -11,12 +11,38 @@ export interface KlineData {
 // === AI 信號 ===
 export type SignalType = 'BUY' | 'SELL' | 'HOLD';
 
+export interface SignalCondition {
+  name: string;
+  met: boolean;
+  value: string;
+}
+
 export interface AgentSignal {
   symbol: string;
   type: SignalType;
   confidence: number;  // 0.0 - 1.0
   reasoning: string;
   timestamp?: number;
+  conditions?: SignalCondition[];
+  ruleId?: string;
+  ruleName?: string;
+}
+
+// === 信號規則 ===
+export interface SignalRule {
+  id: string;
+  name: string;
+  description: string;
+  script: string;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SignalRulesResponse {
+  rules: SignalRule[];
+  activeRule?: SignalRule;
 }
 
 // === 風險狀態 ===
@@ -111,4 +137,5 @@ export type PageType =
   | 'signals'
   | 'risk'
   | 'data-agent'
-  | 'trade-approval';
+  | 'trade-approval'
+  | 'signal-rules';
