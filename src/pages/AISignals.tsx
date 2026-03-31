@@ -38,7 +38,6 @@ function timeAgo(ts?: number) {
 // ── Conditions Panel ─────────────────────────────────────────────
 function ConditionsPanel({ conditions }: { conditions: SignalCondition[] }) {
   const met = conditions.filter((c) => c.met);
-  const unmet = conditions.filter((c) => !c.met);
 
   return (
     <div className="mt-3 space-y-1.5">
