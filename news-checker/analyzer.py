@@ -81,7 +81,7 @@ COFACTS_TIMEOUT = 8.0
 
 COFACTS_QUERY = """
 query CheckArticle($text: String!) {
-  ListArticle(filter: { moreLikeThis: { like: $text } }, first: 3) {
+  ListArticles(filter: { moreLikeThis: { like: $text } }, first: 3) {
     edges {
       node {
         id
@@ -256,7 +256,7 @@ class NewsAnalyzer:
                 timeout=COFACTS_TIMEOUT,
             )
             data = resp.json()
-            edges = data.get("data", {}).get("ListArticle", {}).get("edges", [])
+            edges = data.get("data", {}).get("ListArticles", {}).get("edges", [])
 
             if not edges:
                 return LayerResult("cofacts", 65, self.LAYER_WEIGHTS["cofacts"], "Cofacts 查無相關記錄")
