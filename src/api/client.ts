@@ -9,6 +9,8 @@ import type {
   TradeApproveRequest,
   TradeApproveResponse,
   CredibilityResult,
+  SignalRule,
+  SignalRulesResponse,
 } from '../types/api';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
@@ -44,10 +46,18 @@ export async function fetchKlineData(
 
 // ── AI Signals ─────────────────────────────────────────────────
 export async function fetchAgentSignals(
-  type: 'BUY' | 'SELL' | 'HOLD' | 'ALL' = 'ALL'
+  type: 'BUY' | 'SELL' | 'HOLD' | 'ALL' = 'ALL',
+  ruleId?: string
 ): Promise<AgentSignal[]> {
-  const query = type !== 'ALL' ? `?type=${type}` : '';
+  const params = new URLSearchParams();
+  if (type !== 'ALL') params.set('type', type);
+  if (ruleId) params.set('ruleId', ruleId);
+  const query = params.toString() ? `?${params}` : '';
   return apiFetch<AgentSignal[]>(`/agent/signals${query}`);
+}
+
+export async function fetchActiveRule(): Promise<Omit<SignalRule, 'script'>> {
+  return apiFetch('/agent/active-rule');
 }
 
 export async function fetchAlphaScores(): Promise<AlphaScoreResponse> {
@@ -94,6 +104,55 @@ export async function fetchCrawledData(source?: string, limit = 50): Promise<Cra
   const params = new URLSearchParams({ limit: String(limit) });
   if (source) params.set('source', source);
   return apiFetch<CrawledInfo[]>(`/data-agent/crawled-text?${params}`);
+}
+
+// ── Signal Rules ───────────────────────────────────────────────
+export async function fetchSignalRules(): Promise<SignalRulesResponse> {
+  return apiFetch<SignalRulesResponse>('/signal-rules');
+}
+
+export async function createSignalRule(data: {
+  name: string;
+  description: string;
+  script: string;
+}): Promise<SignalRule> {
+  return apiFetch<SignalRule>('/signal-rules', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateSignalRule(
+  id: string,
+  data: { name?: string; description?: string; script?: string }
+): Promise<SignalRule> {
+  return apiFetch<SignalRule>(`/signal-rules/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSignalRule(id: string): Promise<void> {
+  return apiFetch(`/signal-rules/${id}`, { method: 'DELETE' });
+}
+
+export async function activateSignalRule(id: string): Promise<{ message: string; rule: SignalRule }> {
+  return apiFetch(`/signal-rules/${id}/activate`, { method: 'POST' });
+}
+
+export async function testSignalRule(script: string, marketData?: Record<string, unknown>): Promise<{
+  signal: string;
+  confidence: number;
+  conditions: Array<{ name: string; met: boolean; value: string }>;
+  reasoning: string;
+}> {
+  return apiFetch('/signal-rules/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script, marketData }),
+  });
 }
 
 export async function checkNewsCredibility(params: {
