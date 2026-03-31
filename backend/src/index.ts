@@ -5,6 +5,7 @@ import agentRouter from './routes/agent';
 import riskRouter from './routes/risk';
 import tradeRouter from './routes/trade';
 import dataAgentRouter from './routes/dataAgent';
+import signalRulesRouter from './routes/signalRules';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -24,6 +25,7 @@ app.use('/api/agent', agentRouter);
 app.use('/api/risk', riskRouter);
 app.use('/api/trade', tradeRouter);
 app.use('/api/data-agent', dataAgentRouter);
+app.use('/api/signal-rules', signalRulesRouter);
 
 // ── 404 handler ───────────────────────────────────────────────
 app.use((_req, res) => {
