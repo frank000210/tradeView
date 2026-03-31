@@ -8,6 +8,7 @@ import type {
   PendingTrade,
   TradeApproveRequest,
   TradeApproveResponse,
+  CredibilityResult,
 } from '../types/api';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
@@ -93,4 +94,17 @@ export async function fetchCrawledData(source?: string, limit = 50): Promise<Cra
   const params = new URLSearchParams({ limit: String(limit) });
   if (source) params.set('source', source);
   return apiFetch<CrawledInfo[]>(`/data-agent/crawled-text?${params}`);
+}
+
+export async function checkNewsCredibility(params: {
+  url?: string;
+  title?: string;
+  text?: string;
+  published_at?: number;
+}): Promise<CredibilityResult> {
+  return apiFetch<CredibilityResult>('/data-agent/check-credibility', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
 }
