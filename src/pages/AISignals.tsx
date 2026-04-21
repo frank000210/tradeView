@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   TrendingUp, TrendingDown, Minus, BrainCircuit, Clock, Filter, RefreshCw,
-  ChevronDown, ChevronUp, Code2, Star,
+  ChevronDown, ChevronUp, Code2, Star, Loader2,
 } from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { fetchAgentSignals, fetchAlphaScores, fetchSignalRules } from '../api/client';
@@ -161,6 +161,8 @@ export function AISignals() {
   const [rules, setRules] = useState<SignalRule[]>([]);
   const [selectedRuleId, setSelectedRuleId] = useState<string>('');
   const [rulesLoading, setRulesLoading] = useState(true);
+  const [sigRefreshing, setSigRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   // Load available rules once
   useEffect(() => {
@@ -177,6 +179,7 @@ export function AISignals() {
   const load = useCallback(async () => {
     try {
       setError(null);
+      setSigRefreshing(true);
       const ruleId = selectedRuleId && selectedRuleId !== 'default' ? selectedRuleId : undefined;
       const [sigs, alpha] = await Promise.all([
         fetchAgentSignals('ALL', ruleId),
@@ -184,10 +187,12 @@ export function AISignals() {
       ]);
       setSignals(sigs);
       setRadarData(alpha.scores);
+      if (sigs.length > 0) setLastUpdated(sigs[0].timestamp);
     } catch (e) {
       setError(e instanceof Error ? e.message : '載入失敗');
     } finally {
       setLoading(false);
+      setSigRefreshing(false);
     }
   }, [selectedRuleId]);
 
@@ -241,11 +246,21 @@ export function AISignals() {
             </button>
           ))}
         </div>
-        {activeRule && (
-          <span className="ml-auto text-[10px] text-[#4b5563]">
-            {activeRule.isDefault ? '內建規則' : `自訂規則`}
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-3">
+          {lastUpdated && (
+            <span className="text-[10px] text-[#4b5563]">
+              更新於 {timeAgo(lastUpdated)}
+            </span>
+          )}
+          {sigRefreshing && (
+            <Loader2 size={12} className="animate-spin text-blue-400" />
+          )}
+          {activeRule && (
+            <span className="text-[10px] text-[#4b5563]">
+              {activeRule.isDefault ? '內建規則' : '自訂規則'}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -319,19 +334,31 @@ export function AISignals() {
             </button>
           </div>
 
-          {loading ? (
+          {loading && signals.length === 0 ? (
             <div className="space-y-3">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="h-28 bg-[#111827] rounded-xl animate-pulse" />
               ))}
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-2 text-[#6b7280]">
-              <BrainCircuit size={32} className="opacity-30" />
-              <span className="text-sm">查無 AI 信號資料</span>
-            </div>
           ) : (
-            filtered.map((s, i) => <SignalCard key={`${s.symbol}-${i}`} signal={s} />)
+            <div className="relative">
+              {sigRefreshing && (
+                <div className="absolute inset-0 bg-[#0a0f1a]/60 flex items-center justify-center z-10 rounded-xl backdrop-blur-[1px]">
+                  <div className="flex items-center gap-2 text-xs text-blue-400 bg-[#111827] px-4 py-2 rounded-full border border-blue-500/20">
+                    <Loader2 size={12} className="animate-spin" />
+                    切換規則中…
+                  </div>
+                </div>
+              )}
+              {filtered.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-2 text-[#6b7280]">
+                  <BrainCircuit size={32} className="opacity-30" />
+                  <span className="text-sm">查無 AI 信號資料</span>
+                </div>
+              ) : (
+                filtered.map((s, i) => <SignalCard key={`${s.symbol}-${i}`} signal={s} />)
+              )}
+            </div>
           )}
         </div>
 
