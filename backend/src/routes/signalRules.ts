@@ -1,9 +1,11 @@
 import { Router, Request, Response } from 'express';
 import axios from 'axios';
+import { RSI, MACD, SMA, BollingerBands } from 'technicalindicators';
+import { getPool } from '../db';
+import { fetchRealKline } from './market';
 
 const router = Router();
 
-// Environment configuration
 const NEWS_CHECKER_URL = process.env.NEWS_CHECKER_URL || 'http://localhost:5000';
 
 // -------- Interfaces --------
@@ -95,9 +97,113 @@ const DEFAULT_RULE: SignalRule = {
 // -------- In-Memory Store --------
 
 export const rulesStore = new Map<string, SignalRule>();
+rulesStore.set('default', { ...DEFAULT_RULE });
 
-// Initialize with default rule
-rulesStore.set('default', DEFAULT_RULE);
+// -------- DB Helpers --------
+
+function rowToRule(row: Record<string, unknown>): SignalRule {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    description: (row.description as string) || '',
+    script: row.script as string,
+    isDefault: row.is_default as boolean,
+    isActive: row.is_active as boolean,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+async function persistRuleToDb(rule: SignalRule): Promise<void> {
+  const pool = getPool();
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO signal_rules
+         (id, name, description, script, is_default, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (id) DO UPDATE SET
+         name        = EXCLUDED.name,
+         description = EXCLUDED.description,
+         script      = EXCLUDED.script,
+         is_default  = EXCLUDED.is_default,
+         is_active   = EXCLUDED.is_active,
+         updated_at  = EXCLUDED.updated_at`,
+      [rule.id, rule.name, rule.description, rule.script,
+       rule.isDefault, rule.isActive, rule.createdAt, rule.updatedAt]
+    );
+  } catch (err) {
+    console.error('[signalRules] persistRuleToDb error:', (err as Error).message);
+  }
+}
+
+async function deleteRuleFromDb(id: string): Promise<void> {
+  const pool = getPool();
+  if (!pool) return;
+  try {
+    await pool.query('DELETE FROM signal_rules WHERE id = $1', [id]);
+  } catch (err) {
+    console.error('[signalRules] deleteRuleFromDb error:', (err as Error).message);
+  }
+}
+
+async function deactivateAllInDb(): Promise<void> {
+  const pool = getPool();
+  if (!pool) return;
+  try {
+    await pool.query('UPDATE signal_rules SET is_active = FALSE');
+  } catch (err) {
+    console.error('[signalRules] deactivateAllInDb error:', (err as Error).message);
+  }
+}
+
+/**
+ * Called once on startup from index.ts.
+ * Loads persisted rules from PostgreSQL into rulesStore.
+ * Seeds default rule if DB is empty.
+ */
+export async function loadRulesFromDb(): Promise<void> {
+  const pool = getPool();
+  if (!pool) {
+    console.log('[signalRules] No DB — in-memory store with default rule');
+    return;
+  }
+  try {
+    const result = await pool.query('SELECT * FROM signal_rules ORDER BY created_at ASC');
+
+    if (result.rows.length === 0) {
+      console.log('[signalRules] No rules in DB — seeding default rule');
+      const seed = { ...DEFAULT_RULE, createdAt: Date.now(), updatedAt: Date.now() };
+      await persistRuleToDb(seed);
+      rulesStore.set('default', seed);
+      return;
+    }
+
+    rulesStore.clear();
+    for (const row of result.rows) {
+      const rule = rowToRule(row);
+      rulesStore.set(rule.id, rule);
+    }
+
+    if (!rulesStore.has('default')) {
+      const seed = { ...DEFAULT_RULE, createdAt: Date.now(), updatedAt: Date.now() };
+      rulesStore.set('default', seed);
+      await persistRuleToDb(seed);
+    }
+
+    const anyActive = Array.from(rulesStore.values()).some((r) => r.isActive);
+    if (!anyActive) {
+      const def = rulesStore.get('default')!;
+      def.isActive = true;
+      rulesStore.set('default', def);
+      await persistRuleToDb(def);
+    }
+
+    console.log(`[signalRules] Loaded ${rulesStore.size} rules from DB`);
+  } catch (err) {
+    console.error('[signalRules] loadRulesFromDb error:', (err as Error).message);
+  }
+}
 
 // -------- Utility Functions --------
 
@@ -112,14 +218,10 @@ function validateScript(script: string): { valid: boolean; error?: string } {
   if (script.length > 50000) {
     return { valid: false, error: 'Script too large (max 50KB)' };
   }
-  // Basic validation - check for required variables
   const requiredVars = ['signal', 'confidence', 'conditions'];
   const missing = requiredVars.filter((v) => !script.includes(v));
   if (missing.length > 0) {
-    return {
-      valid: false,
-      error: `Script must define: ${missing.join(', ')}`,
-    };
+    return { valid: false, error: `Script must define: ${missing.join(', ')}` };
   }
   return { valid: true };
 }
@@ -134,14 +236,9 @@ async function executeScriptWithData(
   reasoning: string;
 }> {
   try {
-    const response = await axios.post(`${NEWS_CHECKER_URL}/api/execute-rule`, {
-      script,
-      marketData,
-    });
-
+    const response = await axios.post(`${NEWS_CHECKER_URL}/api/execute-rule`, { script, marketData });
     return response.data;
   } catch (error) {
-    console.error('[signalRules] execute script error:', error);
     throw new Error(
       `Failed to execute script: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
@@ -150,35 +247,21 @@ async function executeScriptWithData(
 
 // -------- Routes --------
 
-/**
- * GET /api/signal-rules
- * List all signal rules
- */
 router.get('/', (_req: Request, res: Response) => {
   const rules = Array.from(rulesStore.values());
-  return res.json({
-    rules,
-    activeRule: rules.find((r) => r.isActive),
-  });
+  return res.json({ rules, activeRule: rules.find((r) => r.isActive) });
 });
 
-/**
- * POST /api/signal-rules
- * Create a new signal rule
- */
 router.post('/', (req: Request, res: Response) => {
   try {
     const { name, description, script } = req.body;
-
     if (!name || name.trim().length === 0) {
       return res.status(400).json({ error: 'Rule name is required' });
     }
-
     const validation = validateScript(script);
     if (!validation.valid) {
       return res.status(400).json({ error: validation.error });
     }
-
     const newRule: SignalRule = {
       id: generateId(),
       name: name.trim(),
@@ -189,9 +272,8 @@ router.post('/', (req: Request, res: Response) => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-
     rulesStore.set(newRule.id, newRule);
-
+    persistRuleToDb(newRule).catch(console.error);
     console.log(`[signalRules] Created rule: ${newRule.id} - ${newRule.name}`);
     return res.status(201).json(newRule);
   } catch (err) {
@@ -200,38 +282,23 @@ router.post('/', (req: Request, res: Response) => {
   }
 });
 
-/**
- * PUT /api/signal-rules/:id
- * Update a signal rule
- */
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { name, description, script } = req.body;
-
     const rule = rulesStore.get(id);
-    if (!rule) {
-      return res.status(404).json({ error: 'Rule not found' });
-    }
-
-    if (rule.isDefault) {
-      return res.status(403).json({ error: 'Cannot modify default rule' });
-    }
-
+    if (!rule) return res.status(404).json({ error: 'Rule not found' });
+    if (rule.isDefault) return res.status(403).json({ error: 'Cannot modify default rule' });
     if (script && script !== rule.script) {
       const validation = validateScript(script);
-      if (!validation.valid) {
-        return res.status(400).json({ error: validation.error });
-      }
+      if (!validation.valid) return res.status(400).json({ error: validation.error });
       rule.script = script;
     }
-
     if (name) rule.name = name.trim();
     if (description !== undefined) rule.description = description;
     rule.updatedAt = Date.now();
-
     rulesStore.set(id, rule);
-
+    persistRuleToDb(rule).catch(console.error);
     console.log(`[signalRules] Updated rule: ${id}`);
     return res.json(rule);
   } catch (err) {
@@ -240,35 +307,22 @@ router.put('/:id', (req: Request, res: Response) => {
   }
 });
 
-/**
- * DELETE /api/signal-rules/:id
- * Delete a signal rule (cannot delete default)
- */
 router.delete('/:id', (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-
     const rule = rulesStore.get(id);
-    if (!rule) {
-      return res.status(404).json({ error: 'Rule not found' });
-    }
-
-    if (rule.isDefault) {
-      return res.status(403).json({ error: 'Cannot delete default rule' });
-    }
-
-    // If deleting the active rule, deactivate it
+    if (!rule) return res.status(404).json({ error: 'Rule not found' });
+    if (rule.isDefault) return res.status(403).json({ error: 'Cannot delete default rule' });
     if (rule.isActive) {
-      rule.isActive = false;
       const defaultRule = rulesStore.get('default');
       if (defaultRule) {
         defaultRule.isActive = true;
         rulesStore.set('default', defaultRule);
+        persistRuleToDb(defaultRule).catch(console.error);
       }
     }
-
     rulesStore.delete(id);
-
+    deleteRuleFromDb(id).catch(console.error);
     console.log(`[signalRules] Deleted rule: ${id}`);
     return res.json({ message: 'Rule deleted', id });
   } catch (err) {
@@ -277,31 +331,15 @@ router.delete('/:id', (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /api/signal-rules/:id/activate
- * Set a rule as the active rule (only one active at a time)
- */
-router.post('/:id/activate', (req: Request, res: Response) => {
+router.post('/:id/activate', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-
     const rule = rulesStore.get(id);
-    if (!rule) {
-      return res.status(404).json({ error: 'Rule not found' });
-    }
-
-    // Deactivate all other rules
-    rulesStore.forEach((r) => {
-      if (r.id !== id && r.isActive) {
-        r.isActive = false;
-        rulesStore.set(r.id, r);
-      }
-    });
-
-    // Activate the specified rule
+    if (!rule) return res.status(404).json({ error: 'Rule not found' });
+    rulesStore.forEach((r) => { r.isActive = r.id === id; });
+    await deactivateAllInDb();
     rule.isActive = true;
-    rulesStore.set(id, rule);
-
+    await persistRuleToDb(rule);
     console.log(`[signalRules] Activated rule: ${id} - ${rule.name}`);
     return res.json({ message: 'Rule activated', rule });
   } catch (err) {
@@ -312,39 +350,73 @@ router.post('/:id/activate', (req: Request, res: Response) => {
 
 /**
  * POST /api/signal-rules/test
- * Test a script without saving
- * Body: { script: string, marketData?: object }
+ * Tests a script using real 台積電 (2330.TW) market data.
+ * Falls back to sample data if Yahoo Finance is unavailable.
  */
 router.post('/test', async (req: Request, res: Response) => {
   try {
-    const { script, marketData } = req.body;
-
-    if (!script) {
-      return res.status(400).json({ error: 'Script is required' });
-    }
-
+    const { script, marketData: providedData } = req.body;
+    if (!script) return res.status(400).json({ error: 'Script is required' });
     const validation = validateScript(script);
-    if (!validation.valid) {
-      return res.status(400).json({ error: validation.error });
-    }
+    if (!validation.valid) return res.status(400).json({ error: validation.error });
 
-    // Use provided market data or sample data
-    const testData = marketData || {
-      symbol: 'TEST',
-      prices: [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
-      volumes: [1000, 1100, 1050, 1200, 1150, 1300, 1250, 1400, 1350, 1500],
-      rsi: 65,
-      macd: 0.5,
-      macd_signal: 0.4,
-      sma20: 105,
-      bb_upper: 110,
-      bb_lower: 100,
-    };
+    let testData: Record<string, unknown>;
+    let marketDataSource: 'real' | 'sample' = 'sample';
+    let testSymbol = 'SAMPLE';
+
+    if (providedData) {
+      testData = providedData as Record<string, unknown>;
+    } else {
+      try {
+        const kline = await fetchRealKline('2330.TW', '1d', 60);
+        if (kline.length < 26) throw new Error('Insufficient kline data');
+
+        const closes = kline.map((k) => k.c);
+        const volumes = kline.map((k) => k.v);
+
+        const rsiArr = RSI.calculate({ values: closes, period: 14 });
+        const rsi = rsiArr[rsiArr.length - 1] ?? 50;
+
+        const macdArr = MACD.calculate({
+          values: closes, fastPeriod: 12, slowPeriod: 26, signalPeriod: 9,
+          SimpleMAOscillator: false, SimpleMASignal: false,
+        });
+        const macdNow = macdArr[macdArr.length - 1];
+
+        const sma20Arr = SMA.calculate({ values: closes, period: 20 });
+        const sma20 = sma20Arr[sma20Arr.length - 1] ?? closes[closes.length - 1];
+
+        const bbArr = BollingerBands.calculate({ values: closes, period: 20, stdDev: 2 });
+        const bb = bbArr[bbArr.length - 1];
+
+        testData = {
+          symbol: '2330',
+          prices: closes,
+          volumes,
+          rsi,
+          macd: macdNow?.MACD ?? 0,
+          macd_signal: macdNow?.signal ?? 0,
+          sma20,
+          bb_upper: bb?.upper ?? closes[closes.length - 1] * 1.05,
+          bb_lower: bb?.lower ?? closes[closes.length - 1] * 0.95,
+        };
+        marketDataSource = 'real';
+        testSymbol = '2330';
+        console.log(`[signalRules/test] Real data: 2330.TW RSI=${rsi.toFixed(1)} SMA20=${sma20.toFixed(1)}`);
+      } catch (_fetchErr) {
+        testData = {
+          symbol: 'TEST',
+          prices: [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
+          volumes: [1000, 1100, 1050, 1200, 1150, 1300, 1250, 1400, 1350, 1500],
+          rsi: 65, macd: 0.5, macd_signal: 0.4, sma20: 105, bb_upper: 110, bb_lower: 100,
+        };
+        console.log('[signalRules/test] Using sample data (real fetch failed)');
+      }
+    }
 
     const result = await executeScriptWithData(script, testData);
-
-    console.log(`[signalRules] Test result: signal=${result.signal}, confidence=${result.confidence}`);
-    return res.json(result);
+    console.log(`[signalRules/test] signal=${result.signal} confidence=${result.confidence} source=${marketDataSource}`);
+    return res.json({ ...result, testSymbol, marketDataSource });
   } catch (err) {
     console.error('[signalRules/test]', err);
     return res.status(500).json({
