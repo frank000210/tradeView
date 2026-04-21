@@ -23,12 +23,6 @@ import {
 import type { SignalRule } from '../types/api';
 import { clsx } from 'clsx';
 
-const SIGNAL_COLORS = {
-  BUY: 'text-green-400',
-  SELL: 'text-red-400',
-  HOLD: 'text-yellow-400',
-};
-
 const NEW_RULE_TEMPLATE = `# 自訂信號規則
 # 可用變數: prices(list), volumes(list), rsi(float), macd(float),
 #           macd_signal(float), sma20(float), bb_upper(float), bb_lower(float), symbol(str)
