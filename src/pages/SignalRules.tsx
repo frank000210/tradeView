@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import Editor from '@monaco-editor/react';
 import {
   Code2,
   Plus,
@@ -11,6 +12,7 @@ import {
   Star,
   AlertCircle,
   Loader2,
+  Database,
 } from 'lucide-react';
 import {
   fetchSignalRules,
@@ -65,6 +67,8 @@ interface TestResult {
   confidence: number;
   conditions: Array<{ name: string; met: boolean; value: string }>;
   reasoning: string;
+  testSymbol?: string;
+  marketDataSource?: 'real' | 'sample';
 }
 
 export function SignalRules() {
@@ -378,7 +382,7 @@ export function SignalRules() {
           </div>
 
           {/* Script Editor */}
-          <div className="flex-1 flex flex-col min-h-0 bg-[#0d1117] border border-[#1f2937] rounded-xl overflow-hidden">
+          <div className="flex-1 flex flex-col min-h-0 bg-[#0d1117] border border-[#1f2937] rounded-xl overflow-hidden" style={{ minHeight: '320px' }}>
             <div className="flex items-center gap-2 px-4 py-2 border-b border-[#1f2937] bg-[#111827]">
               <Code2 size={12} className="text-blue-400" />
               <span className="text-xs text-[#6b7280]">Python 腳本</span>
@@ -386,14 +390,38 @@ export function SignalRules() {
                 <span className="text-[10px] px-1.5 py-0.5 bg-[#1f2937] text-[#6b7280] rounded ml-auto">唯讀</span>
               )}
             </div>
-            <textarea
-              className="flex-1 w-full bg-[#0d1117] text-[#e2e8f0] text-xs font-mono p-4 focus:outline-none resize-none leading-relaxed"
-              value={editingRule.script}
-              readOnly={editingRule.isDefault}
-              onChange={(e) => !editingRule.isDefault && setEditingRule({ ...editingRule, script: e.target.value })}
-              spellCheck={false}
-              style={{ minHeight: '280px' }}
-            />
+            <div className="flex-1" style={{ minHeight: '280px' }}>
+              <Editor
+                height="100%"
+                language="python"
+                theme="vs-dark"
+                value={editingRule.script}
+                options={{
+                  readOnly: editingRule.isDefault,
+                  fontSize: 12,
+                  minimap: { enabled: false },
+                  lineNumbers: 'on',
+                  wordWrap: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 4,
+                  insertSpaces: true,
+                  renderLineHighlight: 'all',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                }}
+                onChange={(value) => {
+                  if (!editingRule.isDefault && value !== undefined) {
+                    setEditingRule({ ...editingRule, script: value });
+                  }
+                }}
+                loading={
+                  <div className="flex items-center justify-center h-full text-[#4b5563] text-xs gap-2">
+                    <Loader2 size={14} className="animate-spin" />
+                    載入編輯器…
+                  </div>
+                }
+              />
+            </div>
           </div>
 
           {/* Test Result */}
@@ -412,6 +440,12 @@ export function SignalRules() {
                 </div>
               ) : testResult ? (
                 <div>
+                  {testResult.marketDataSource === 'real' && testResult.testSymbol && (
+                    <div className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full mb-2">
+                      <Database size={9} />
+                      使用台積電（{testResult.testSymbol}）真實市場資料
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 mb-3">
                     <CheckCircle2 size={16} className="text-green-400" />
                     <span className="text-xs font-semibold text-white">測試結果</span>
