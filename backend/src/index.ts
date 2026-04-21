@@ -5,7 +5,8 @@ import agentRouter from './routes/agent';
 import riskRouter from './routes/risk';
 import tradeRouter from './routes/trade';
 import dataAgentRouter from './routes/dataAgent';
-import signalRulesRouter from './routes/signalRules';
+import signalRulesRouter, { loadRulesFromDb } from './routes/signalRules';
+import { initDb } from './db';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -42,8 +43,12 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 // ── Start server ──────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ TradeView Backend running on port ${PORT}`);
-  console.log(`   Health: http://localhost:${PORT}/health`);
-  console.log(`   API:    http://localhost:${PORT}/api`);
-});
+(async () => {
+  await initDb();
+  await loadRulesFromDb();
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ TradeView Backend running on port ${PORT}`);
+    console.log(`   Health: http://localhost:${PORT}/health`);
+    console.log(`   API:    http://localhost:${PORT}/api`);
+  });
+})();
