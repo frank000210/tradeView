@@ -187,7 +187,7 @@ export function AISignals() {
       ]);
       setSignals(sigs);
       setRadarData(alpha.scores);
-      if (sigs.length > 0) setLastUpdated(sigs[0].timestamp);
+      if (sigs.length > 0) setLastUpdated(sigs[0].timestamp ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : '載入失敗');
     } finally {
