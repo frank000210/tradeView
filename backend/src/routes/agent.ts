@@ -41,7 +41,7 @@ let signalCache: GeneratedSignal[] = [];
 let signalCacheTime = 0;
 let alphaCache: AlphaMetric[] = [];
 let alphaCacheTime = 0;
-const SIGNAL_TTL = 10 * 60_000; // 10 分鐘
+const SIGNAL_TTL = 2 * 60_000; // 2 分鐘
 
 // -------- 技術指標計算 --------
 
